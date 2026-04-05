@@ -10,13 +10,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    /* 読みやすいUDフォントを全体に適用 */
     body {
       font-family: 'BIZ UDPGothic', sans-serif;
-      background-color: #f0fdf4; /* 清潔感のあるごく薄い緑/青系の背景 */
+      background-color: #f0fdf4;
       color: #334155;
     }
-    /* グラフのY軸と表の見出し幅を合わせるための固定幅 */
     .y-axis-width {
       width: 90px;
       min-width: 90px;
@@ -29,32 +27,27 @@
 <body class="p-4 md:p-8 min-h-screen flex flex-col items-center">
 
   <div class="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
-    
-    <h1 class="text-2xl md:text-3xl font-bold text-center text-slate-700 mb-6">
-      気温のグラフ
-    </h1>
 
-    <p class="text-center text-slate-600 mb-8 text-lg">
-      場所は日本語か英語（ローマ字）で入力。海外の気温にも対応
-    </p>
+    <h1 class="text-2xl md:text-3xl font-bold text-center text-slate-700 mb-6">気温のグラフ</h1>
 
-    <!-- 設定入力エリア -->
+    <p class="text-center text-slate-600 mb-8 text-lg">場所は日本語か英語（ローマ字）で入力。海外の気温にも対応</p>
+
     <div class="flex flex-col md:flex-row items-center justify-center gap-4 mb-8 bg-slate-50 p-4 rounded-xl border border-slate-100">
-      
+
       <div class="flex flex-col w-full md:w-auto">
         <label for="locationInput" class="text-sm font-bold text-slate-600 mb-1">場所</label>
-        <input type="text" id="locationInput" value="渋谷" placeholder="例：渋谷" 
+        <input type="text" id="locationInput" value="渋谷" placeholder="例：渋谷"
                class="p-3 border border-slate-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-green-400 w-full md:w-64">
       </div>
 
       <div class="flex flex-col w-full md:w-auto">
         <label for="dateInput" class="text-sm font-bold text-slate-600 mb-1">基準の日付</label>
-        <input type="date" id="dateInput" 
+        <input type="date" id="dateInput"
                class="p-3 border border-slate-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-green-400 w-full md:w-48">
       </div>
 
       <div class="flex flex-col w-full md:w-auto mt-auto">
-        <button id="fetchBtn" 
+        <button id="fetchBtn"
                 class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors shadow-sm">
           データを見る
         </button>
@@ -62,31 +55,20 @@
 
     </div>
 
-    <!-- メッセージ表示エリア -->
-    <div id="messageArea" class="text-center text-lg font-bold min-h-[2rem] mb-4 text-slate-600">
-      <!-- 取得中やエラーのメッセージがここに表示されます -->
-    </div>
+    <div id="messageArea" class="text-center text-lg font-bold min-h-[2rem] mb-4 text-slate-600"></div>
 
-    <!-- 結果表示エリア（初期は非表示） -->
     <div id="resultArea" class="hidden">
-      
-      <h2 id="resultTitle" class="text-xl font-bold text-center text-slate-700 mb-6 border-b-2 border-green-200 inline-block px-4 pb-2">
-        <!-- 〇〇の気温データ（〇月〇日〜〇月〇日） -->
-      </h2>
 
-      <!-- グラフと表のコンテナ（横スクロール対応でレイアウト崩れを防止） -->
+      <h2 id="resultTitle" class="text-xl font-bold text-center text-slate-700 mb-6 border-b-2 border-green-200 inline-block px-4 pb-2"></h2>
+
       <div class="w-full overflow-x-auto pb-4">
-        <div style="min-width: 800px;"> <!-- タブレットやPCで綺麗に見える最小幅 -->
-          
-          <!-- グラフエリア -->
+        <div style="min-width: 800px;">
+
           <div class="h-80 mb-2 relative w-full">
             <canvas id="temperatureChart"></canvas>
           </div>
 
-          <!-- 表（テーブル）エリア -->
-          <div id="temperatureTable" class="flex flex-col border-2 border-slate-200 rounded-lg overflow-hidden">
-            <!-- JavaScriptで中身を生成します -->
-          </div>
+          <div id="temperatureTable" class="flex flex-col border-2 border-slate-200 rounded-lg overflow-hidden"></div>
 
         </div>
       </div>
@@ -96,18 +78,44 @@
   </div>
 
   <script>
-    // --- 初期設定 ---
-    // 今日の日付を取得してカレンダー入力のデフォルト値に設定
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
-    const todayString = `${year}-${month}-${day}`;
-    document.getElementById('dateInput').value = todayString;
+    document.getElementById('dateInput').value = `${year}-${month}-${day}`;
 
     let chartInstance = null;
 
-    // --- ボタンクリック時の処理 ---
+    function wmoToIcon(code) {
+      if (code === null || code === undefined) return '—';
+      if (code === 0) return '☀️';
+      if (code <= 2) return '🌤️';
+      if (code === 3) return '☁️';
+      if (code <= 49) return '🌫️';
+      if (code <= 59) return '🌦️';
+      if (code <= 69) return '🌧️';
+      if (code <= 79) return '❄️';
+      if (code <= 84) return '🌧️';
+      if (code <= 94) return '❄️';
+      return '⛈️';
+    }
+
+    function getRepresentativeCode(times, codes, targetDateStr, startHour, endHour) {
+      const matching = [];
+      times.forEach((t, i) => {
+        if (t.startsWith(targetDateStr)) {
+          const hour = parseInt(t.split('T')[1].split(':')[0]);
+          if (hour >= startHour && hour < endHour) {
+            if (codes[i] !== null && codes[i] !== undefined) {
+              matching.push(codes[i]);
+            }
+          }
+        }
+      });
+      if (matching.length === 0) return null;
+      return Math.max(...matching);
+    }
+
     document.getElementById('fetchBtn').addEventListener('click', async () => {
       const location = document.getElementById('locationInput').value.trim();
       const dateString = document.getElementById('dateInput').value;
@@ -131,91 +139,76 @@
 
       try {
         const data = await fetchWeatherData(location, dateString);
-        
-        // データの描画
         document.getElementById('resultTitle').textContent = `${data.name} の気温の変化`;
         renderChart(data.daily);
-        renderTable(data.daily, dateString);
-        
+        renderTable(data.daily, dateString, data.hourlyWeather);
         resultArea.classList.remove('hidden');
-        messageArea.textContent = ''; // メッセージをクリア
+        messageArea.textContent = '';
       } catch (error) {
         messageArea.textContent = error.message;
         messageArea.className = 'text-center text-lg font-bold min-h-[2rem] mb-4 text-orange-500';
       }
     });
 
-    // --- 気象データの取得処理 (Open-Meteo APIを使用) ---
     async function fetchWeatherData(location, baseDateString) {
-      // 1. 場所の名前から緯度・経度を取得
       const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=ja`);
       if (!geoRes.ok) throw new Error('通信エラーが発生しました。');
       const geoData = await geoRes.json();
-      
       if (!geoData.results || geoData.results.length === 0) {
         throw new Error('場所が見つかりませんでした。「市・町・村」をつけるか、はずすか、ローマ字で入力してみてください。');
       }
       const { latitude, longitude, name } = geoData.results[0];
 
-      // 2. 取得する期間の計算（前日 〜 6日後 ＝ 合計8日間）
       const baseDate = new Date(baseDateString);
-      
       const startDate = new Date(baseDate);
       startDate.setDate(baseDate.getDate() - 1);
-      
       const endDate = new Date(baseDate);
       endDate.setDate(baseDate.getDate() + 6);
 
-      const startStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
-      const endStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+      const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-      // 3. 気温データの取得
-      const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo&start_date=${startStr}&end_date=${endStr}`);
+      const weatherRes = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+        `&daily=temperature_2m_max,temperature_2m_min` +
+        `&hourly=weather_code` +
+        `&timezone=Asia%2FTokyo&start_date=${fmt(startDate)}&end_date=${fmt(endDate)}`
+      );
       if (!weatherRes.ok) throw new Error('天気データの取得に失敗しました。');
       const weatherData = await weatherRes.json();
 
-      return {
-        name: name,
-        daily: weatherData.daily
-      };
+      return { name, daily: weatherData.daily, hourlyWeather: weatherData.hourly };
     }
 
-    // --- グラフの描画処理 ---
     function renderChart(dailyData) {
       const ctx = document.getElementById('temperatureChart').getContext('2d');
-      
-      if (chartInstance) {
-        chartInstance.destroy(); // 以前のグラフを消去
-      }
+      if (chartInstance) chartInstance.destroy();
 
-      // X軸のラベル作成（〇/〇）
-      const labels = dailyData.time.map(timeStr => {
-        const d = new Date(timeStr);
-        return `${d.getMonth() + 1}/${d.getDate()}`;
+      const labels = dailyData.time.map(t => {
+        const d = new Date(t);
+        return `${d.getMonth()+1}/${d.getDate()}`;
       });
 
-      // フォント設定の共通化
       const fontFamily = "'BIZ UDPGothic', sans-serif";
 
       chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: labels,
+          labels,
           datasets: [
             {
               label: '最高気温 (℃)',
               data: dailyData.temperature_2m_max,
-              borderColor: '#ef4444', // 赤色
+              borderColor: '#ef4444',
               backgroundColor: '#ef4444',
               borderWidth: 3,
-              tension: 0.1, // 少しだけ曲げる
-              pointRadius: 6, // 点を大きめに
+              tension: 0.1,
+              pointRadius: 6,
               pointHoverRadius: 8
             },
             {
               label: '最低気温 (℃)',
               data: dailyData.temperature_2m_min,
-              borderColor: '#3b82f6', // 青色
+              borderColor: '#3b82f6',
               backgroundColor: '#3b82f6',
               borderWidth: 3,
               tension: 0.1,
@@ -227,108 +220,79 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: {
-            padding: { left: 0, right: 0, top: 10, bottom: 0 }
-          },
+          layout: { padding: { left: 0, right: 0, top: 10, bottom: 0 } },
           plugins: {
-            legend: {
-              position: 'top',
-              labels: { font: { family: fontFamily, size: 14 } }
-            },
-            tooltip: {
-              titleFont: { family: fontFamily, size: 14 },
-              bodyFont: { family: fontFamily, size: 14 }
-            }
+            legend: { position: 'top', labels: { font: { family: fontFamily, size: 14 } } },
+            tooltip: { titleFont: { family: fontFamily, size: 14 }, bodyFont: { family: fontFamily, size: 14 } }
           },
           scales: {
             x: {
-              offset: true, // これによりデータポイントが等分領域の中央に配置されます
+              offset: true,
               grid: { display: false },
               ticks: { font: { family: fontFamily, size: 14 } }
             },
             y: {
-              beginAtZero: true, // 0℃を必ず表示する
-              afterFit: function(scaleInstance) {
-                // 表の左端の項目列と、グラフのY軸エリアの幅を完全に一致させる
-                scaleInstance.width = 90; 
-              },
-              ticks: {
-                font: { family: fontFamily, size: 14 },
-                stepSize: 5 // 5度区切りで読みやすく
-              }
+              beginAtZero: true,
+              afterFit: function(s) { s.width = 90; },
+              ticks: { font: { family: fontFamily, size: 14 }, stepSize: 5 }
             }
           }
         }
       });
     }
 
-    // --- 表（テーブル）の生成処理 ---
-    function renderTable(dailyData, baseDateString) {
+    function renderTable(dailyData, baseDateString, hourlyWeather) {
       const tableContainer = document.getElementById('temperatureTable');
-      tableContainer.innerHTML = ''; // 中身をリセット
+      tableContainer.innerHTML = '';
 
-      // 日付の差を計算するための基準日（時間は0時にリセット）
       const baseDate = new Date(baseDateString);
       baseDate.setHours(0, 0, 0, 0);
-      
-      // 行ごとの枠組み要素を作成
-      const dateRow = document.createElement('div');
+
+      const dateRow    = document.createElement('div');
       dateRow.className = 'flex border-b border-slate-200 bg-slate-50';
-      
-      const maxRow = document.createElement('div');
-      maxRow.className = 'flex border-b border-slate-200 bg-white';
-      
-      const minRow = document.createElement('div');
-      minRow.className = 'flex bg-white';
+      const maxRow     = document.createElement('div');
+      maxRow.className  = 'flex border-b border-slate-200 bg-white';
+      const minRow     = document.createElement('div');
+      minRow.className  = 'flex border-b border-slate-200 bg-white';
+      const weatherRow = document.createElement('div');
+      weatherRow.className = 'flex bg-sky-50';
 
-      // 最初の列（見出し列）を作成
       const headerClass = 'y-axis-width p-3 flex items-center justify-center font-bold text-sm md:text-base border-r border-slate-200 text-slate-700';
-      
-      dateRow.innerHTML = `<div class="${headerClass}">日付</div>`;
-      maxRow.innerHTML = `<div class="${headerClass} text-red-600">最高(℃)</div>`;
-      minRow.innerHTML = `<div class="${headerClass} text-blue-600">最低(℃)</div>`;
+      dateRow.innerHTML    = `<div class="${headerClass}">日付</div>`;
+      maxRow.innerHTML     = `<div class="${headerClass} text-red-600">最高(℃)</div>`;
+      minRow.innerHTML     = `<div class="${headerClass} text-blue-600">最低(℃)</div>`;
+      weatherRow.innerHTML = `<div class="${headerClass} text-sky-600 text-xs leading-tight">天気<br><span class="font-normal">午前/午後</span></div>`;
 
-      // データ列の追加
       dailyData.time.forEach((timeStr, index) => {
         const targetDate = new Date(timeStr);
         targetDate.setHours(0, 0, 0, 0);
-        
-        // 基準日との日数差を計算
         const diffDays = Math.round((targetDate - baseDate) / (1000 * 60 * 60 * 24));
-        
-        // 今日を強調するための背景色設定
         const isToday = (diffDays === 0);
         const cellBg = isToday ? 'bg-yellow-50' : '';
         const borderClass = 'border-r border-slate-200 last:border-r-0';
-
-        const dateDisplay = `${targetDate.getMonth() + 1}/${targetDate.getDate()}`;
-
-        // Flex: 1 で残りの幅を8等分にする
+        const dateDisplay = `${targetDate.getMonth()+1}/${targetDate.getDate()}`;
         const cellClass = `flex-1 p-2 md:p-3 text-center flex flex-col justify-center ${borderClass} ${cellBg}`;
-        
-        dateRow.innerHTML += `
-          <div class="${cellClass}">
-            <div class="font-bold text-slate-800 text-sm md:text-base">${dateDisplay}</div>
-          </div>
-        `;
-        
-        maxRow.innerHTML += `
-          <div class="${cellClass} font-bold text-red-500 text-base md:text-lg">
-            ${Math.round(dailyData.temperature_2m_max[index])}
-          </div>
-        `;
-        
-        minRow.innerHTML += `
-          <div class="${cellClass} font-bold text-blue-500 text-base md:text-lg">
-            ${Math.round(dailyData.temperature_2m_min[index])}
+
+        dateRow.innerHTML += `<div class="${cellClass}"><div class="font-bold text-slate-800 text-sm md:text-base">${dateDisplay}</div></div>`;
+        maxRow.innerHTML  += `<div class="${cellClass} font-bold text-red-500 text-base md:text-lg">${Math.round(dailyData.temperature_2m_max[index])}</div>`;
+        minRow.innerHTML  += `<div class="${cellClass} font-bold text-blue-500 text-base md:text-lg">${Math.round(dailyData.temperature_2m_min[index])}</div>`;
+
+        const amCode = getRepresentativeCode(hourlyWeather.time, hourlyWeather.weather_code, timeStr, 6, 12);
+        const pmCode = getRepresentativeCode(hourlyWeather.time, hourlyWeather.weather_code, timeStr, 12, 19);
+
+        weatherRow.innerHTML += `
+          <div class="${cellClass} ${isToday ? 'bg-yellow-50' : 'bg-sky-50'}">
+            <div class="text-xl leading-none">${wmoToIcon(amCode)}</div>
+            <div class="text-slate-400 text-xs my-0.5">/</div>
+            <div class="text-xl leading-none">${wmoToIcon(pmCode)}</div>
           </div>
         `;
       });
 
-      // コンテナに行を追加
       tableContainer.appendChild(dateRow);
       tableContainer.appendChild(maxRow);
       tableContainer.appendChild(minRow);
+      tableContainer.appendChild(weatherRow);
     }
   </script>
 </body>
