@@ -24,6 +24,11 @@
     input[type="date"], input[type="text"] {
       font-family: 'BIZ UDPGothic', sans-serif;
     }
+    /* PCでのドラッグ操作時に文字が選択されないようにする */
+    .select-none {
+      user-select: none;
+      -webkit-user-select: none;
+    }
   </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen flex flex-col items-center">
@@ -34,8 +39,9 @@
       気温のグラフ
     </h1>
 
-    <p class="text-center text-slate-600 mb-8 text-lg">
-      場所は日本語か英語（ローマ字）で入力。海外の気温にも対応
+    <p class="text-center text-slate-600 mb-8 text-lg leading-relaxed">
+      場所は日本語か英語（ローマ字）で入力。海外の気温にも対応。<br>
+      <span class="text-green-600 text-base font-bold">💡 グラフ・表を左右にスワイプ（ドラッグ）すると7日前まで戻れます</span>
     </p>
 
     <!-- 設定入力エリア -->
@@ -70,21 +76,26 @@
     <!-- 結果表示エリア（初期は非表示） -->
     <div id="resultArea" class="hidden">
       
-      <h2 id="resultTitle" class="text-xl font-bold text-center text-slate-700 mb-6 border-b-2 border-green-200 inline-block px-4 pb-2">
-        <!-- 〇〇の気温データ（〇月〇日〜〇月〇日） -->
-      </h2>
+      <div class="text-center mb-6">
+        <h2 id="resultTitle" class="text-xl md:text-2xl font-bold text-slate-700 border-b-2 border-green-200 inline-block px-4 pb-2 transition-all">
+          <!-- 〇〇の気温データ -->
+        </h2>
+        <div id="offsetBadge" class="text-sm font-bold text-orange-500 mt-2 hidden">
+          <!-- 過去に遡っている時のバッジ表示 -->
+        </div>
+      </div>
 
-      <!-- グラフと表のコンテナ（横スクロール対応でレイアウト崩れを防止） -->
-      <div class="w-full overflow-x-auto pb-4">
+      <!-- グラフと表のコンテナ（スワイプ・ドラッグの対象エリア） -->
+      <div id="scrollContainer" class="w-full overflow-x-auto pb-4 cursor-grab select-none">
         <div style="min-width: 800px;"> <!-- タブレットやPCで綺麗に見える最小幅 -->
           
           <!-- グラフエリア -->
-          <div class="h-80 mb-2 relative w-full">
+          <div class="h-80 mb-2 relative w-full pointer-events-none">
             <canvas id="temperatureChart"></canvas>
           </div>
 
           <!-- 表（テーブル）エリア -->
-          <div id="temperatureTable" class="flex flex-col border-2 border-slate-200 rounded-lg overflow-hidden">
+          <div id="temperatureTable" class="flex flex-col border-2 border-slate-200 rounded-lg overflow-hidden pointer-events-none">
             <!-- JavaScriptで中身を生成します -->
           </div>
 
@@ -97,7 +108,6 @@
 
   <script>
     // --- 初期設定 ---
-    // 今日の日付を取得してカレンダー入力のデフォルト値に設定
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -106,6 +116,12 @@
     document.getElementById('dateInput').value = todayString;
 
     let chartInstance = null;
+    
+    // --- スワイプ機能のための状態管理 ---
+    let fullWeatherData = null; // 15日分（8日前〜6日後）の全データを保持
+    let fullBaseDateString = ''; // 検索した基準日
+    let currentLocationName = ''; // 検索した場所
+    let currentOffset = 0; // 現在の表示ズレ日数 (0 が基準日通り。最大 -6)
 
     // --- ボタンクリック時の処理 ---
     document.getElementById('fetchBtn').addEventListener('click', async () => {
@@ -130,22 +146,28 @@
       resultArea.classList.add('hidden');
 
       try {
+        // APIからデータを取得
         const data = await fetchWeatherData(location, dateString);
         
-        // データの描画
-        document.getElementById('resultTitle').textContent = `${data.name} の気温の変化`;
-        renderChart(data.daily);
-        renderTable(data.daily, dateString);
+        fullWeatherData = data.daily;
+        fullBaseDateString = dateString;
+        currentLocationName = data.name;
+        currentOffset = 0; // 新しく検索した時はオフセットを0に戻す
+        
+        updateDisplay(); // 描画処理
         
         resultArea.classList.remove('hidden');
-        messageArea.textContent = ''; // メッセージをクリア
+        messageArea.textContent = ''; 
+        
+        // 検索直後はスクロール位置を左端にリセット
+        document.getElementById('scrollContainer').scrollLeft = 0;
       } catch (error) {
         messageArea.textContent = error.message;
         messageArea.className = 'text-center text-lg font-bold min-h-[2rem] mb-4 text-orange-500';
       }
     });
 
-    // --- 気象データの取得処理 (Open-Meteo APIを使用) ---
+    // --- 気象データの取得処理 (7日前まで戻れるよう長めに取得) ---
     async function fetchWeatherData(location, baseDateString) {
       // 1. 場所の名前から緯度・経度を取得
       const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=ja`);
@@ -157,14 +179,14 @@
       }
       const { latitude, longitude, name } = geoData.results[0];
 
-      // 2. 取得する期間の計算（前日 〜 6日後 ＝ 合計8日間）
+      // 2. 取得する期間の計算（最大7日前まで戻れるように、基準日の8日前 〜 6日後 ＝ 合計15日間取得）
       const baseDate = new Date(baseDateString);
       
       const startDate = new Date(baseDate);
-      startDate.setDate(baseDate.getDate() - 1);
+      startDate.setDate(baseDate.getDate() - 8); // 8日前
       
       const endDate = new Date(baseDate);
-      endDate.setDate(baseDate.getDate() + 6);
+      endDate.setDate(baseDate.getDate() + 6); // 6日後
 
       const startStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
       const endStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
@@ -180,6 +202,44 @@
       };
     }
 
+    // --- オフセットに基づいて画面を更新する処理 ---
+    function updateDisplay() {
+      if (!fullWeatherData) return;
+
+      // 基準日のインデックスを探す
+      let baseIndex = fullWeatherData.time.findIndex(t => t === fullBaseDateString);
+      if (baseIndex === -1) baseIndex = 8; // 万が一見つからない場合の安全策
+
+      // 表示範囲を計算 (8日間分)
+      // currentOffsetが -1 なら1日過去へずれる
+      let startIndex = baseIndex - 1 + currentOffset;
+      if (startIndex < 0) startIndex = 0; // 念のための範囲外ガード
+      const endIndex = startIndex + 8;
+
+      // 表示用のデータを切り出す
+      const displayData = {
+        time: fullWeatherData.time.slice(startIndex, endIndex),
+        temperature_2m_max: fullWeatherData.temperature_2m_max.slice(startIndex, endIndex),
+        temperature_2m_min: fullWeatherData.temperature_2m_min.slice(startIndex, endIndex)
+      };
+
+      // タイトルとバッジの更新
+      const titleEl = document.getElementById('resultTitle');
+      const badgeEl = document.getElementById('offsetBadge');
+      
+      titleEl.textContent = `${currentLocationName} の気温の変化`;
+      if (currentOffset < 0) {
+        badgeEl.textContent = `▶ 現在 ${Math.abs(currentOffset) + 1}日前 までのデータを表示中`;
+        badgeEl.classList.remove('hidden');
+      } else {
+        badgeEl.classList.add('hidden');
+      }
+
+      // 描画実行
+      renderChart(displayData);
+      renderTable(displayData, fullBaseDateString);
+    }
+
     // --- グラフの描画処理 ---
     function renderChart(dailyData) {
       const ctx = document.getElementById('temperatureChart').getContext('2d');
@@ -188,13 +248,11 @@
         chartInstance.destroy(); // 以前のグラフを消去
       }
 
-      // X軸のラベル作成（〇/〇）
       const labels = dailyData.time.map(timeStr => {
         const d = new Date(timeStr);
         return `${d.getMonth() + 1}/${d.getDate()}`;
       });
 
-      // フォント設定の共通化
       const fontFamily = "'BIZ UDPGothic', sans-serif";
 
       chartInstance = new Chart(ctx, {
@@ -205,17 +263,17 @@
             {
               label: '最高気温 (℃)',
               data: dailyData.temperature_2m_max,
-              borderColor: '#ef4444', // 赤色
+              borderColor: '#ef4444',
               backgroundColor: '#ef4444',
               borderWidth: 3,
-              tension: 0.1, // 少しだけ曲げる
-              pointRadius: 6, // 点を大きめに
+              tension: 0.1,
+              pointRadius: 6,
               pointHoverRadius: 8
             },
             {
               label: '最低気温 (℃)',
               data: dailyData.temperature_2m_min,
-              borderColor: '#3b82f6', // 青色
+              borderColor: '#3b82f6',
               backgroundColor: '#3b82f6',
               borderWidth: 3,
               tension: 0.1,
@@ -227,35 +285,24 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: { duration: 300 }, // スワイプ時の再描画を少しスムーズに
           layout: {
             padding: { left: 0, right: 0, top: 10, bottom: 0 }
           },
           plugins: {
-            legend: {
-              position: 'top',
-              labels: { font: { family: fontFamily, size: 14 } }
-            },
-            tooltip: {
-              titleFont: { family: fontFamily, size: 14 },
-              bodyFont: { family: fontFamily, size: 14 }
-            }
+            legend: { position: 'top', labels: { font: { family: fontFamily, size: 14 } } },
+            tooltip: { titleFont: { family: fontFamily, size: 14 }, bodyFont: { family: fontFamily, size: 14 } }
           },
           scales: {
             x: {
-              offset: true, // これによりデータポイントが等分領域の中央に配置されます
+              offset: true,
               grid: { display: false },
               ticks: { font: { family: fontFamily, size: 14 } }
             },
             y: {
-              beginAtZero: true, // 0℃を必ず表示する
-              afterFit: function(scaleInstance) {
-                // 表の左端の項目列と、グラフのY軸エリアの幅を完全に一致させる
-                scaleInstance.width = 90; 
-              },
-              ticks: {
-                font: { family: fontFamily, size: 14 },
-                stepSize: 5 // 5度区切りで読みやすく
-              }
+              beginAtZero: true,
+              afterFit: function(scaleInstance) { scaleInstance.width = 90; },
+              ticks: { font: { family: fontFamily, size: 14 }, stepSize: 5 }
             }
           }
         }
@@ -265,50 +312,42 @@
     // --- 表（テーブル）の生成処理 ---
     function renderTable(dailyData, baseDateString) {
       const tableContainer = document.getElementById('temperatureTable');
-      tableContainer.innerHTML = ''; // 中身をリセット
+      tableContainer.innerHTML = ''; 
 
-      // 日付の差を計算するための基準日（時間は0時にリセット）
       const baseDate = new Date(baseDateString);
       baseDate.setHours(0, 0, 0, 0);
       
-      // 行ごとの枠組み要素を作成
       const dateRow = document.createElement('div');
       dateRow.className = 'flex border-b border-slate-200 bg-slate-50';
-      
       const maxRow = document.createElement('div');
       maxRow.className = 'flex border-b border-slate-200 bg-white';
-      
       const minRow = document.createElement('div');
       minRow.className = 'flex bg-white';
 
-      // 最初の列（見出し列）を作成
       const headerClass = 'y-axis-width p-3 flex items-center justify-center font-bold text-sm md:text-base border-r border-slate-200 text-slate-700';
-      
       dateRow.innerHTML = `<div class="${headerClass}">日付</div>`;
       maxRow.innerHTML = `<div class="${headerClass} text-red-600">最高(℃)</div>`;
       minRow.innerHTML = `<div class="${headerClass} text-blue-600">最低(℃)</div>`;
 
-      // データ列の追加
       dailyData.time.forEach((timeStr, index) => {
         const targetDate = new Date(timeStr);
         targetDate.setHours(0, 0, 0, 0);
         
-        // 基準日との日数差を計算
         const diffDays = Math.round((targetDate - baseDate) / (1000 * 60 * 60 * 24));
-        
-        // 今日を強調するための背景色設定
         const isToday = (diffDays === 0);
-        const cellBg = isToday ? 'bg-yellow-50' : '';
+        // 基準日を黄色でハイライト
+        const cellBg = isToday ? 'bg-yellow-100 shadow-inner' : '';
         const borderClass = 'border-r border-slate-200 last:border-r-0';
-
         const dateDisplay = `${targetDate.getMonth() + 1}/${targetDate.getDate()}`;
-
-        // Flex: 1 で残りの幅を8等分にする
         const cellClass = `flex-1 p-2 md:p-3 text-center flex flex-col justify-center ${borderClass} ${cellBg}`;
         
+        // 日付の下に基準日テキストを追加（わかりやすさのため）
+        const todayLabel = isToday ? '<div class="text-xs text-orange-600 mt-1">基準日</div>' : '';
+
         dateRow.innerHTML += `
           <div class="${cellClass}">
             <div class="font-bold text-slate-800 text-sm md:text-base">${dateDisplay}</div>
+            ${todayLabel}
           </div>
         `;
         
@@ -325,11 +364,102 @@
         `;
       });
 
-      // コンテナに行を追加
       tableContainer.appendChild(dateRow);
       tableContainer.appendChild(maxRow);
       tableContainer.appendChild(minRow);
     }
+
+    // ==========================================
+    // ドラッグ＆スワイプによる過去データ閲覧機能
+    // ==========================================
+    const scrollContainer = document.getElementById('scrollContainer');
+    let isDown = false;
+    let startScreenX = 0;
+    let initialScrollLeft = 0;
+
+    // --- 日付をずらす関数 ---
+    function changeOffset(deltaDays) {
+      let newOffset = currentOffset + deltaDays;
+      // 制限：現在(0) 〜 7日前(左端が7日前になるのはオフセット-6) の間のみ移動可能
+      if (newOffset < -6) newOffset = -6;
+      if (newOffset > 0) newOffset = 0;
+      
+      if (newOffset !== currentOffset) {
+        currentOffset = newOffset;
+        updateDisplay();
+        
+        // 過去へ移動した時は左端にくっつけ、未来へ移動した時は右端にくっつけると自然な操作感になる
+        if (deltaDays < 0) {
+          scrollContainer.scrollLeft = 0;
+        } else {
+          scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+        }
+      }
+    }
+
+    // --- 操作開始 ---
+    function pointerDown(x, scrollL) {
+      isDown = true;
+      startScreenX = x;
+      initialScrollLeft = scrollL;
+      scrollContainer.classList.replace('cursor-grab', 'cursor-grabbing');
+    }
+
+    // --- 操作終了・スワイプ判定 ---
+    function pointerUp(endScreenX) {
+      if (!isDown) return;
+      isDown = false;
+      scrollContainer.classList.replace('cursor-grabbing', 'cursor-grab');
+
+      const dx = endScreenX - startScreenX; 
+      // dx > 0 : 右方向へ引っ張った（過去を見たい）
+      // dx < 0 : 左方向へ引っ張った（未来を見たい）
+
+      const threshold = 60; // 何px引っ張ったら1日動かすか
+
+      // スマホ等の横スクロールと競合しないよう、「スクロールの端っこ」にいる時だけ日付を動かす
+      const isAtLeftEdge = initialScrollLeft <= 5;
+      const isAtRightEdge = initialScrollLeft >= (scrollContainer.scrollWidth - scrollContainer.clientWidth) - 5;
+
+      if (isAtLeftEdge && dx > threshold) {
+        // 左端でさらに右へ引っ張った → 過去へ
+        const days = Math.floor(dx / threshold);
+        changeOffset(-days);
+      } else if (isAtRightEdge && dx < -threshold) {
+        // 右端でさらに左へ引っ張った → 未来(現在)へ
+        const days = Math.floor(Math.abs(dx) / threshold);
+        changeOffset(days);
+      }
+    }
+
+    // 【PC用】マウスイベント
+    scrollContainer.addEventListener('mousedown', (e) => {
+      pointerDown(e.pageX, scrollContainer.scrollLeft);
+    });
+
+    scrollContainer.addEventListener('mousemove', (e) => {
+      if (!isDown) return;
+      e.preventDefault(); 
+      const x = e.pageX;
+      const dx = x - startScreenX;
+      // PCの場合はドラッグでコンテナの横スクロールも連動させる
+      scrollContainer.scrollLeft = initialScrollLeft - dx;
+    });
+
+    scrollContainer.addEventListener('mouseup', (e) => { pointerUp(e.pageX); });
+    scrollContainer.addEventListener('mouseleave', (e) => { if (isDown) pointerUp(e.pageX); });
+
+    // 【スマホ用】タッチイベント
+    scrollContainer.addEventListener('touchstart', (e) => {
+      pointerDown(e.touches[0].clientX, scrollContainer.scrollLeft);
+    }, {passive: true});
+
+    // ※ touchmove はブラウザの滑らかなネイティブ横スクロールに任せる
+
+    scrollContainer.addEventListener('touchend', (e) => {
+      pointerUp(e.changedTouches[0].clientX);
+    }, {passive: true});
+
   </script>
 </body>
 </html>
